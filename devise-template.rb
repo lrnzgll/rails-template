@@ -5,6 +5,7 @@ inject_into_file 'Gemfile', before: 'group :development, :test do' do
     gem 'devise'
     gem 'autoprefixer-rails'
     gem 'font-awesome-sass'
+    gem 'rubocop', require: false
   RUBY
 end
 
