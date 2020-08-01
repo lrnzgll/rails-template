@@ -1,3 +1,5 @@
+run "if uname | grep -q 'Darwin'; then pgrep spring | xargs kill -9; fi"
+
 # GEMFILE
 ########################################
 inject_into_file 'Gemfile', before: 'group :development, :test do' do
@@ -11,9 +13,15 @@ end
 
 inject_into_file 'Gemfile', after: 'group :development, :test do' do
   <<-RUBY
-  gem 'pry-byebug'
-  gem 'pry-rails'
-  gem 'dotenv-rails'
+    gem 'pry-byebug'
+    gem 'pry-rails'
+    gem 'dotenv-rails'
+  RUBY
+end
+
+inject_into_file 'Gemfile', after: 'group :test do' do
+  <<-RUBY
+     gem 'rspec'
   RUBY
 end
 
@@ -50,7 +58,6 @@ environment generators
 after_bundle do
   ########################################
   rails_command 'db:drop db:create db:migrate'
-  generate('--bootstrap')
 
   # Git ignore
   ########################################
@@ -62,11 +69,6 @@ after_bundle do
     .DS_Store
   TXT
 
-  # Devise install + user
-  ########################################
-  generate('devise:install')
-  generate('devise', 'User')
-
   # App controller
   ########################################
   run 'rm app/controllers/application_controller.rb'
@@ -75,11 +77,6 @@ after_bundle do
     #{  "protect_from_forgery with: :exception\n" if Rails.version < "5.2"}  before_action :authenticate_user!
     end
   RUBY
-
-  # migrate + devise views
-  ########################################
-  rails_command 'db:migrate'
-  generate('devise:views')
 
   # Environments
   ########################################
@@ -119,6 +116,14 @@ after_bundle do
   # Dotenv
   ########################################
   run 'touch .env'
+  
+   # Rubocop
+  ########################################
+  run 'curl -L https://raw.githubusercontent.com/lrnzgll/rails-template/master/rubocop-defaults.yml > .rubocop.yml'
+
+  # Init Rspec
+  #######################################
+  run 'rspec --init'
 
   # Fix puma config
   gsub_file('config/puma.rb', 'pidfile ENV.fetch("PIDFILE") { "tmp/pids/server.pid" }', '# pidfile ENV.fetch("PIDFILE") { "tmp/pids/server.pid" }')
