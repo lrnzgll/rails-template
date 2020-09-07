@@ -5,27 +5,27 @@ run "if uname | grep -q 'Darwin'; then pgrep spring | xargs kill -9; fi"
 inject_into_file 'Gemfile', before: 'group :development, :test do' do
   <<~RUBY
     gem 'devise'
+
     gem 'autoprefixer-rails'
-    gem 'font-awesome-sass'
-    gem 'rubocop', require: false
   RUBY
 end
 
 inject_into_file 'Gemfile', after: 'group :development, :test do' do
   <<-RUBY
-    gem 'pry-byebug'
-    gem 'pry-rails'
-    gem 'dotenv-rails'
-  RUBY
-end
-
-inject_into_file 'Gemfile', after: 'group :test do' do
-  <<-RUBY
-     gem 'rspec'
+  gem 'pry-byebug'
+  gem 'pry-rails'
+  gem 'dotenv-rails'
   RUBY
 end
 
 gsub_file('Gemfile', /# gem 'redis'/, "gem 'redis'")
+
+# Assets
+########################################
+run 'rm -rf app/assets/stylesheets'
+run 'rm -rf vendor'
+run 'curl -L https://github.com/lewagon/stylesheets/archive/master.zip > stylesheets.zip'
+run 'unzip stylesheets.zip -d app/assets && rm stylesheets.zip && mv app/assets/rails-stylesheets-master app/assets/stylesheets'
 
 # Dev environment
 ########################################
@@ -39,6 +39,33 @@ style = <<~HTML
       <%= stylesheet_link_tag 'application', media: 'all', 'data-turbolinks-track': 'reload' %>
 HTML
 gsub_file('app/views/layouts/application.html.erb', "<%= stylesheet_link_tag 'application', media: 'all', 'data-turbolinks-track': 'reload' %>", style)
+
+# Flashes
+########################################
+file 'app/views/shared/_flashes.html.erb', <<~HTML
+  <% if notice %>
+    <div class="alert alert-info alert-dismissible fade show m-1" role="alert">
+      <%= notice %>
+      <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+        <span aria-hidden="true">&times;</span>
+      </button>
+    </div>
+  <% end %>
+  <% if alert %>
+    <div class="alert alert-warning alert-dismissible fade show m-1" role="alert">
+      <%= alert %>
+      <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+        <span aria-hidden="true">&times;</span>
+      </button>
+    </div>
+  <% end %>
+HTML
+
+inject_into_file 'app/views/layouts/application.html.erb', after: '<body>' do
+  <<-HTML
+    <%= render 'shared/flashes' %>
+  HTML
+end
 
 # Generators
 ########################################
@@ -56,8 +83,14 @@ environment generators
 # AFTER BUNDLE
 ########################################
 after_bundle do
+  # Generators: db + simple form + pages controller
   ########################################
   rails_command 'db:drop db:create db:migrate'
+  generate(:controller, 'pages', 'home', '--skip-routes', '--no-test-framework')
+
+  # Routes
+  ########################################
+  route "root to: 'pages#home'"
 
   # Git ignore
   ########################################
@@ -69,12 +102,34 @@ after_bundle do
     .DS_Store
   TXT
 
+  # Devise install + user
+  ########################################
+  generate('devise:install')
+  generate('devise', 'User')
+
   # App controller
   ########################################
   run 'rm app/controllers/application_controller.rb'
   file 'app/controllers/application_controller.rb', <<~RUBY
     class ApplicationController < ActionController::Base
     #{  "protect_from_forgery with: :exception\n" if Rails.version < "5.2"}  before_action :authenticate_user!
+    end
+  RUBY
+
+  # migrate + devise views
+  ########################################
+  rails_command 'db:migrate'
+  generate('devise:views')
+
+  # Pages Controller
+  ########################################
+  run 'rm app/controllers/pages_controller.rb'
+  file 'app/controllers/pages_controller.rb', <<~RUBY
+    class PagesController < ApplicationController
+      skip_before_action :authenticate_user!, only: [ :home ]
+
+      def home
+      end
     end
   RUBY
 
@@ -86,15 +141,9 @@ after_bundle do
   # Webpacker / Yarn
   ########################################
   run 'yarn add popper.js jquery bootstrap'
+  
   append_file 'app/javascript/packs/application.js', <<~JS
-    // External imports
     import "bootstrap";
-    // Internal imports, e.g:
-    // import { initSelect2 } from '../components/init_select2';
-    document.addEventListener('turbolinks:load', () => {
-      // Call your functions here, e.g:
-      // initSelect2();
-    });
   JS
 
   inject_into_file 'config/webpack/environment.js', before: 'module.exports' do
@@ -116,14 +165,6 @@ after_bundle do
   # Dotenv
   ########################################
   run 'touch .env'
-  
-   # Rubocop
-  ########################################
-  run 'curl -L https://raw.githubusercontent.com/lrnzgll/rails-template/master/rubocop-defaults.yml > .rubocop.yml'
-
-  # Init Rspec
-  #######################################
-  run 'rspec --init'
 
   # Fix puma config
   gsub_file('config/puma.rb', 'pidfile ENV.fetch("PIDFILE") { "tmp/pids/server.pid" }', '# pidfile ENV.fetch("PIDFILE") { "tmp/pids/server.pid" }')
